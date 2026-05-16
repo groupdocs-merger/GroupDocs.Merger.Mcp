@@ -1,0 +1,40 @@
+# GroupDocs.Merger MCP Server
+
+MCP server for GroupDocs.Merger — merge, split, and inspect documents via AI agents. Wraps GroupDocs.Merger for .NET and exposes it as tool calls for Claude, Cursor, VS Code / GitHub Copilot, and other MCP-compatible clients. Supports PDF, DOCX, XLSX, PPTX, and 30+ more document, image, and archive formats. Exposes Merge, Split, and GetDocumentInfo tools.
+
+## Install
+
+- With dnx (.NET 10 SDK, no install step): `dnx GroupDocs.Merger.Mcp@26.5.0 --yes`
+- As a global dotnet tool: `dotnet tool install -g GroupDocs.Merger.Mcp` then run `groupdocs-merger-mcp`
+- As a Docker container: `docker run --rm -i -v $(pwd)/documents:/data ghcr.io/groupdocs-merger/merger-net-mcp:latest`
+
+## MCP tools
+
+- Merge — merge 2–4 documents into a single file and save the result. Returns a saved-path message and download URL.
+- Split — extract specific pages (1-based, comma-separated) from a document, saving each as its own file.
+- GetDocumentInfo — return file type, page count, size, and per-page dimensions of a document as JSON, without modifying it.
+
+## Supported formats
+
+PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF, TXT, CSV, HTML, EPUB, PNG, JPG, TIFF, VSDX, ZIP, and 30+ other document, image, and archive formats.
+
+## Environment variables
+
+- GROUPDOCS_MCP_STORAGE_PATH — base folder for input + output (defaults to current working directory)
+- GROUPDOCS_MCP_OUTPUT_PATH — optional, routes output files to a separate folder
+- GROUPDOCS_LICENSE_PATH — path to GroupDocs.Total.lic; omit for evaluation mode (merged / split output may include watermarks)
+
+## Key links
+
+- NuGet: https://www.nuget.org/packages/GroupDocs.Merger.Mcp
+- Repository: https://github.com/groupdocs-merger/GroupDocs.Merger.Mcp
+- Docker: ghcr.io/groupdocs-merger/merger-net-mcp and docker.io/groupdocs/merger-net-mcp
+- License: MIT
+
+## Example prompts for AI agents
+
+- "Merge intro.docx and appendix.docx into one file."
+- "Combine report-q1.pdf, report-q2.pdf, and report-q3.pdf into a single PDF."
+- "Split pages 3, 7, and 9 out of contract.pdf into separate files."
+- "How many pages does presentation.pptx have?"
+- "Pull pages 1 through 5 of manual.docx into their own documents."
