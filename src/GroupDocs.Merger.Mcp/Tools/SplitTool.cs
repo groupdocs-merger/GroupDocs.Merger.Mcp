@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text;
+using GroupDocs.Merger.Domain.Common;
 using GroupDocs.Merger.Domain.Options;
 using GroupDocs.Mcp.Core;
 using GroupDocs.Mcp.Core.Licensing;
@@ -48,30 +49,40 @@ public static class SplitTool
 
         var ext = Path.GetExtension(resolved.FileName);
         var baseName = Path.GetFileNameWithoutExtension(resolved.FileName);
-        var tempInput = Path.Combine(Path.GetTempPath(), $"gd_mcp_{Guid.NewGuid()}{ext}");
-        var tempOutputDir = Path.Combine(Path.GetTempPath(), $"gd_mcp_{Guid.NewGuid()}");
-        Directory.CreateDirectory(tempOutputDir);
 
         try
         {
-            await using (var fs = File.Create(tempInput))
-                await resolved.Stream.CopyToAsync(fs);
+            // Each extracted page is written to an in-memory stream supplied via
+            // the CreateSplitStream callback — no temp files / temp directory.
+            // `number` is the 1-based page number being written; ReleaseSplitStream
+            // fires once that page is fully written, while still inside Split().
+            var open = new Dictionary<int, MemoryStream>();
+            var parts = new SortedDictionary<int, byte[]>();
 
-            var outputPattern = Path.Combine(tempOutputDir, $"{baseName}_{{0}}.{{1}}");
-            var splitOptions = new SplitOptions(outputPattern, pageNumbers);
-
-            using var merger = password != null
-                ? new GroupDocs.Merger.Merger(tempInput, new LoadOptions(password))
-                : new GroupDocs.Merger.Merger(tempInput);
-
-            merger.Split(splitOptions);
-
-            var outputFiles = Directory.GetFiles(tempOutputDir).OrderBy(f => f).ToList();
-            var savedPaths = new List<string>();
-            foreach (var outputFile in outputFiles)
+            var createStream = new CreateSplitStream(number =>
             {
-                var bytes = await File.ReadAllBytesAsync(outputFile);
-                var savedPath = await storage.WriteFileAsync(Path.GetFileName(outputFile), bytes, rewrite: false);
+                var ms = new MemoryStream();
+                open[number] = ms;
+                return ms;
+            });
+            var releaseStream = new ReleaseSplitStream((number, _) =>
+            {
+                parts[number] = open[number].ToArray();
+                open[number].Dispose();
+            });
+
+            using (var merger = password != null
+                ? new GroupDocs.Merger.Merger(resolved.Stream, new LoadOptions(password))
+                : new GroupDocs.Merger.Merger(resolved.Stream))
+            {
+                merger.Split(new SplitOptions(createStream, releaseStream, pageNumbers));
+            }
+
+            var savedPaths = new List<string>();
+            foreach (var part in parts)
+            {
+                var outputName = $"{baseName}_{part.Key}{ext}";
+                var savedPath = await storage.WriteFileAsync(outputName, part.Value, rewrite: false);
                 savedPaths.Add(savedPath);
             }
 
@@ -81,12 +92,10 @@ public static class SplitTool
         }
         catch (Exception ex)
         {
+            // Surface the underlying engine exception instead of letting it bubble
+            // to MCP's generic "An error occurred invoking 'split'." wrapper.
+            // Pattern per Pitfall #18.
             return FormatException(ex, resolved.FileName, pages);
-        }
-        finally
-        {
-            if (File.Exists(tempInput)) File.Delete(tempInput);
-            if (Directory.Exists(tempOutputDir)) Directory.Delete(tempOutputDir, recursive: true);
         }
     }
 

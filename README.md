@@ -17,7 +17,7 @@ Pulls the latest stable release on every invocation. To pin to a specific
 version (recommended for shared configs and CI), append `@<version>`:
 
 ```bash
-dnx GroupDocs.Merger.Mcp@26.5.0 --yes
+dnx GroupDocs.Merger.Mcp@26.5.1 --yes
 ```
 
 **Or install as a global dotnet tool:**
@@ -81,7 +81,7 @@ server is connected.
 }
 ```
 
-> To pin: replace `"GroupDocs.Merger.Mcp"` with `"GroupDocs.Merger.Mcp@26.5.0"` in `args`.
+> To pin: replace `"GroupDocs.Merger.Mcp"` with `"GroupDocs.Merger.Mcp@26.5.1"` in `args`.
 
 ## Usage with VS Code / GitHub Copilot
 

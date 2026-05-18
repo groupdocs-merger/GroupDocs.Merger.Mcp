@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "description": "MCP server for GroupDocs.Merger — merge, split, and inspect documents via AI agents.",
   "name": "io.github.groupdocs-merger/groupdocs-merger-mcp",
-  "version": "26.5.0",
+  "version": "26.5.1",
   "packages": [
     {
       "registryType": "nuget",
       "registryBaseUrl": "https://api.nuget.org/v3/index.json",
       "identifier": "GroupDocs.Merger.Mcp",
-      "version": "26.5.0",
+      "version": "26.5.1",
       "transport": {
         "type": "stdio"
       },

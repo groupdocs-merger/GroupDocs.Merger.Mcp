@@ -29,62 +29,48 @@ public static class MergeTool
     {
         licenseManager.SetLicense();
 
-        var inputs = new List<FileInput> { file1, file2 };
-        if (file3 != null) inputs.Add(file3);
-        if (file4 != null) inputs.Add(file4);
+        // Resolve every input up front. Resolver failures (file-not-found is a
+        // caller error) propagate cleanly — they are deliberately NOT wrapped by
+        // the engine catch below. The resolved files stay open for the whole
+        // method (method-scoped `using`) so the engine reads their streams
+        // directly: no temp files, nothing to leak or race on cleanup.
+        using var r1 = await resolver.ResolveAsync(file1);
+        using var r2 = await resolver.ResolveAsync(file2);
+        using var r3 = file3 != null ? await resolver.ResolveAsync(file3) : null;
+        using var r4 = file4 != null ? await resolver.ResolveAsync(file4) : null;
 
-        var tempFiles = new List<string>();
-        var resolvedNames = new List<string>();
-        var tempOutput = string.Empty;
+        var resolvedNames = new List<string> { r1.FileName, r2.FileName };
+        if (r3 != null) resolvedNames.Add(r3.FileName);
+        if (r4 != null) resolvedNames.Add(r4.FileName);
 
-        // Outer try carries only the `finally` cleanup. The resolution loop
-        // sits here (NOT inside the engine catch) so resolver errors —
-        // file-not-found is a caller error — propagate cleanly per Pitfall #18.
         try
         {
-            foreach (var input in inputs)
+            var ext = Path.GetExtension(resolvedNames[0]);
+            var outputName = $"{Path.GetFileNameWithoutExtension(resolvedNames[0])}_merged{ext}";
+
+            // Merge entirely in memory — Merger reads the input streams and writes
+            // the result to a MemoryStream. No temp files.
+            using var outputMs = new MemoryStream();
+            using (var merger = new GroupDocs.Merger.Merger(r1.Stream))
             {
-                using var resolved = await resolver.ResolveAsync(input);
-                resolvedNames.Add(resolved.FileName);
-                var tempPath = Path.Combine(Path.GetTempPath(), $"gd_mcp_{Guid.NewGuid()}{Path.GetExtension(resolved.FileName)}");
-                await using (var fs = File.Create(tempPath))
-                    await resolved.Stream.CopyToAsync(fs);
-                tempFiles.Add(tempPath);
+                merger.Join(r2.Stream);
+                if (r3 != null) merger.Join(r3.Stream);
+                if (r4 != null) merger.Join(r4.Stream);
+                merger.Save(outputMs);
             }
 
-            // Inner try/catch wraps the engine work — engine exceptions are
-            // surfaced as a descriptive string, not bubbled to MCP's wrapper.
-            try
-            {
-                var ext = Path.GetExtension(resolvedNames[0]);
-                var outputName = $"{Path.GetFileNameWithoutExtension(resolvedNames[0])}_merged{ext}";
-                tempOutput = Path.Combine(Path.GetTempPath(), $"gd_mcp_{Guid.NewGuid()}{ext}");
+            var savedPath = await storage.WriteFileAsync(outputName, outputMs.ToArray(), rewrite: false);
 
-                using (var merger = new GroupDocs.Merger.Merger(tempFiles[0]))
-                {
-                    for (int i = 1; i < tempFiles.Count; i++)
-                        merger.Join(tempFiles[i]);
-                    merger.Save(tempOutput);
-                }
-
-                var bytes = await File.ReadAllBytesAsync(tempOutput);
-                var savedPath = await storage.WriteFileAsync(outputName, bytes, rewrite: false);
-
-                var names = string.Join(" + ", resolvedNames);
-                var prefix = licenseManager.IsLicensed ? string.Empty : "[Evaluation mode] Output may include watermarks.\n\n";
-                return await output.BuildFileOutputAsync(savedPath, $"{prefix}Merged {names} into '{outputName}'");
-            }
-            catch (Exception ex)
-            {
-                return FormatException(ex, resolvedNames);
-            }
+            var names = string.Join(" + ", resolvedNames);
+            var prefix = licenseManager.IsLicensed ? string.Empty : "[Evaluation mode] Output may include watermarks.\n\n";
+            return await output.BuildFileOutputAsync(savedPath, $"{prefix}Merged {names} into '{outputName}'");
         }
-        finally
+        catch (Exception ex)
         {
-            foreach (var t in tempFiles)
-                if (File.Exists(t)) File.Delete(t);
-            if (!string.IsNullOrEmpty(tempOutput) && File.Exists(tempOutput))
-                File.Delete(tempOutput);
+            // Surface the underlying engine exception instead of letting it bubble
+            // to ModelContextProtocol's generic "An error occurred invoking
+            // 'merge'." wrapper. Pattern per Pitfall #18.
+            return FormatException(ex, resolvedNames);
         }
     }
 

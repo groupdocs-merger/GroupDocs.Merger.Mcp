@@ -30,17 +30,15 @@ public static class GetDocumentInfoTool
         licenseManager.SetLicense();
         using var resolved = await resolver.ResolveAsync(file);
 
-        var ext = Path.GetExtension(resolved.FileName);
-        var tempInput = Path.Combine(Path.GetTempPath(), $"gd_mcp_{Guid.NewGuid()}{ext}");
-
         try
         {
-            await using (var fs = File.Create(tempInput))
-                await resolved.Stream.CopyToAsync(fs);
-
+            // Build the engine straight from the resolved stream — no temp file.
+            // GroupDocs.Merger.Merger accepts a Stream; spooling the content to
+            // disk just to hand back a path would leak the OS file handle (Merger
+            // releases input handles lazily, racing the cleanup delete on Windows).
             using var merger = password != null
-                ? new GroupDocs.Merger.Merger(tempInput, new LoadOptions(password))
-                : new GroupDocs.Merger.Merger(tempInput);
+                ? new GroupDocs.Merger.Merger(resolved.Stream, new LoadOptions(password))
+                : new GroupDocs.Merger.Merger(resolved.Stream);
 
             var info = merger.GetDocumentInfo();
 
@@ -65,11 +63,10 @@ public static class GetDocumentInfoTool
         }
         catch (Exception ex)
         {
+            // Surface the underlying engine exception instead of letting it bubble
+            // to MCP's generic "An error occurred invoking 'get_document_info'."
+            // wrapper. Pattern per Pitfall #18.
             return FormatException(ex, resolved.FileName);
-        }
-        finally
-        {
-            if (File.Exists(tempInput)) File.Delete(tempInput);
         }
     }
 
